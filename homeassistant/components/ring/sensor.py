@@ -154,7 +154,7 @@ class HistoryRingSensor(RingSensor):
             found = history_data[0]
         else:
             for entry in history_data:
-                if entry["kind"] == kind:
+                if entry["kind"] == kind and self.applyEntityDescriptionFilter(entry):
                     found = entry
                     break
 
@@ -163,6 +163,17 @@ class HistoryRingSensor(RingSensor):
 
         self._latest_event = found
         self.async_write_ha_state()
+
+    def applyEntityDescriptionFilter(self, history_entry):
+        if not self.entity_description.filter or not self.entity_description.filter_value:
+            return True
+
+        tokens = self.entity_description.filter.split('.')
+        data_object = history_entry
+        for token in tokens:
+            if token in data_object:
+                data_object = data_object[token]
+        return data_object == self.entity_description.filter_value
 
     @property
     def native_value(self):
@@ -182,7 +193,8 @@ class HistoryRingSensor(RingSensor):
             attrs["answered"] = self._latest_event["answered"]
             attrs["recording_status"] = self._latest_event["recording"]["status"]
             attrs["category"] = self._latest_event["kind"]
-
+            if self.entity_description.kind == "motion" and "cv_properties" in self._latest_event:
+                attrs["detection_type"] = self._latest_event["cv_properties"]["detection_type"]
         return attrs
 
 
@@ -199,6 +211,8 @@ class RingSensorEntityDescription(SensorEntityDescription, RingRequiredKeysMixin
     """Describes Ring sensor entity."""
 
     kind: str | None = None
+    filter: str | None = None
+    filter_value: str | None = None
 
 
 SENSOR_TYPES: tuple[RingSensorEntityDescription, ...] = (
@@ -233,6 +247,17 @@ SENSOR_TYPES: tuple[RingSensorEntityDescription, ...] = (
         category=["doorbots", "authorized_doorbots", "stickup_cams"],
         icon="mdi:history",
         kind="motion",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        cls=HistoryRingSensor,
+    ),
+    RingSensorEntityDescription(
+        key="last_person",
+        name="Last Person",
+        category=["doorbots", "authorized_doorbots", "stickup_cams"],
+        icon="mdi:history",
+        kind="motion",
+        filter="cv_properties.detection_type",
+        filter_value="human",
         device_class=SensorDeviceClass.TIMESTAMP,
         cls=HistoryRingSensor,
     ),
